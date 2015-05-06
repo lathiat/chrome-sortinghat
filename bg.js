@@ -2,24 +2,34 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-function matches(rule, item) {
-  if (rule.matcher == 'js')
-    return eval(rule.match_param);
-  if (rule.matcher == 'hostname') {
-    var link = document.createElement('a');
-    link.href = item.url.toLowerCase();
-    var host = (rule.match_param.indexOf(':') < 0) ? link.hostname : link.host;
-    return (host.indexOf(rule.match_param.toLowerCase()) ==
-            (host.length - rule.match_param.length));
-  }
-  if (rule.matcher == 'default')
-    return item.filename == rule.match_param;
-  if (rule.matcher == 'url-regex')
-    return (new RegExp(rule.match_param)).test(item.url);
-  if (rule.matcher == 'default-regex')
-    return (new RegExp(rule.match_param)).test(item.filename);
-  return false;
-}
+function parseUri (str) {
+	var	o   = parseUri.options,
+		m   = o.parser[o.strictMode ? "strict" : "loose"].exec(str),
+		uri = {},
+		i   = 14;
+
+	while (i--) uri[o.key[i]] = m[i] || "";
+
+	uri[o.q.name] = {};
+	uri[o.key[12]].replace(o.q.parser, function ($0, $1, $2) {
+		if ($1) uri[o.q.name][$1] = $2;
+	});
+
+	return uri;
+};
+
+parseUri.options = {
+	strictMode: false,
+	key: ["source","protocol","authority","userInfo","user","password","host","port","relative","path","directory","file","query","anchor"],
+	q:   {
+		name:   "queryKey",
+		parser: /(?:^|&)([^&=]*)=?([^&]*)/g
+	},
+	parser: {
+		strict: /^(?:([^:\/?#]+):)?(?:\/\/((?:(([^:@]*)(?::([^:@]*))?)?@)?([^:\/?#]*)(?::(\d*))?))?((((?:[^?#\/]*\/)*)([^?#]*))(?:\?([^#]*))?(?:#(.*))?)/,
+		loose:  /^(?:(?![^:@]+:[^:@\/]*@)([^:\/?#.]+):)?(?:\/\/)?((?:(([^:@]*)(?::([^:@]*))?)?@)?([^:\/?#]*)(?::(\d*))?)(((\/(?:[^?#](?![^?#\/]*\.[^?#\/.]+(?:[?#]|$)))*\/?)?([^?#\/]*))(?:\?([^#]*))?(?:#(.*))?)/
+	}
+};
 
 chrome.downloads.onDeterminingFilename.addListener(function(item, __suggest) {
   function suggest(filename, conflictAction) {
@@ -30,23 +40,13 @@ chrome.downloads.onDeterminingFilename.addListener(function(item, __suggest) {
     // http://src.chromium.org/viewvc/chrome?view=rev&revision=214133
     // which was first picked up in branch 1580.
   }
-  var rules = localStorage.rules;
-  try {
-    rules = JSON.parse(rules);
-  } catch (e) {
-    localStorage.rules = JSON.stringify([]);
-  }
-  for (var index = 0; index < rules.length; ++index) {
-    var rule = rules[index];
-    if (rule.enabled && matches(rule, item)) {
-      if (rule.action == 'overwrite') {
-        suggest(item.filename, 'overwrite');
-      } else if (rule.action == 'prompt') {
-        suggest(item.filename, 'prompt');
-      } else if (rule.action == 'js') {
-        eval(rule.action_js);
-      }
-      break;
+//  try {
+    var rules = parseUri(item.referrer);
+    if ('contextNumber' in rules.queryKey) {
+      console.log("found contextNumber=" + rules.queryKey['contextNumber']);
+      suggest(rules.queryKey['contextNumber'] + "/" + item.filename, 'prompt');      
     }
-  }
+ // } catch (e) {
+ // 	console.log("error #{e}");
+ // }
 });
